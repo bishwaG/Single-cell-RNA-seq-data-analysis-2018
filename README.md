@@ -13,6 +13,5 @@ Single cell RNAseq analysis with R
    - using automatic classification algorithms
  - differential expression analysis
  - pseudotime analysis
-
 If time permits:
  - Integrating different datasets (CCA in Seurat)
