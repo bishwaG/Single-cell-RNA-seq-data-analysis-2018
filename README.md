@@ -10,7 +10,7 @@
  - cell type identification
    - using known markers
    - using automatic classification algorithms
- - differential expression analysis
+ - differential gene expression analysis
  - pseudotime analysis
  - if time permits: Integrating different datasets (CCA in Seurat)
 
@@ -18,7 +18,7 @@
  - to assess the quality of scRNAseq data
  - to control batch effects and other unwanted variation
  - cell clustering and identification
- - gene expression analysis
+ - differential gene expression analysis
  - choosing the tools for further analyses
 
 ## Prerequisites:
