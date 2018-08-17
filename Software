@@ -4,4 +4,5 @@ R and RStudio
 R packages:
 Seurat
 Scater
-Monocle? Or another pseudotime package?
+Slingshot
+Plotly
