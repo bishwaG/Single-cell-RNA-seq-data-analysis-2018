@@ -3,6 +3,6 @@ Software to be installed on lab computers
 R and RStudio
 R packages:
 Seurat
-Scater
-Slingshot
-Plotly
+scater (Bioconductor)
+slingshot (https://github.com/kstreet13/slingshot)
+plotly
