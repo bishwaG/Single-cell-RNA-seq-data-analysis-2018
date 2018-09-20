@@ -160,7 +160,7 @@ v2 <- VlnPlot(object = seqwell,
 plot_grid(v1,v2, labels=c("10X", "Seqwell"), ncol = 1)
 ```
 
-## Scatter plots
+We can also check the distribution in scatter plots.
 
 ```{r}
 ## Scatter plots
@@ -316,18 +316,18 @@ p3 <- VlnPlot(object = sObj, features.plot = "CC2", group.by = "library", do.ret
 p1
 plot_grid(p2, p3)
 
-## heat map of 18 CCA dimensions
+## heat map of 12 CCA dimensions
 DimHeatmap(object = sObj, 
            reduction.type = "cca", 
            cells.use = 500, 
            num.genes = 50,
-           dim.use = 1:9, 
+           dim.use = 1:6, 
            do.balanced = TRUE)
 DimHeatmap(object = sObj, 
            reduction.type = "cca", 
            cells.use = 500, 
            num.genes = 50,
-           dim.use = 10:18, 
+           dim.use = 7:12, 
            do.balanced = TRUE)
 
 ## Number of dimensions to include in the analysis
@@ -459,6 +459,7 @@ p <- plot_ly(sObj@meta.data,
         color = ~res.0.8,  
         mode="markers", 
         hoverinfo="text") %>% add_markers()
+p
 ```
 
 ## Expression of gene of interest
