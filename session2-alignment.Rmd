@@ -5,8 +5,20 @@ output: pdf_document
 
 This tutorial has been structured based on Seurat tutorial on alignment. We have two datasets from two different single cell plateforms (10X Genimics and Seqwell). Seurat's alignment pipeline allows us to integrate single-cell data across different conditions, technologies, and species.
 
+
+As a first step open terminal from your application menu and change the directory to `Single-cell-course-2018`
+
+```{bash include=FALSE}
+cd single-cell-course-2018
+git clone https://github.com/bishwaG/Single-cell-RNA-seq-data-analysis-2018.git
+cd Single-cell-RNA-seq-data-analysis-2018
+```
+
+
+
+
 Load libraries needed for the analysis.
-```{r}
+```{r message=FALSE}
 ## load libraries
 library(Seurat)
 library(dplyr)
@@ -17,10 +29,10 @@ library(plotly)
 
 Setting up input output directories.
 
-```{r}
+```{r message=FALSE}
 ## variables
-tenx.data.path <- "../data/10x/"
-seqwell.data.path <- "../data/seqwell/"
+tenx.data.path <- "data/10x/"
+seqwell.data.path <- "data/seqwell/"
 robj.dir <- "r-objects"
 output.dir <- "output"
 
@@ -58,11 +70,11 @@ dim(seqwell.nt.data)
 
 # Create seurat objects.
 
-The function `CreateSeuratObject` creates Seurat object from full matrix. If you have sparse matrix from 10X Genomic plateform use the function `Read10X`. 
+The function `CreateSeuratObject` creates Seurat object from full matrix. If you have sparse matrix from 10X Genomics use the function `Read10X`. 
 
 ### Parameters:
-- min.cells: Include genes with detected expression in at least `3` cells.
-- min.genes: Include cells where at least `200` genes are detected.
+- `min.cells`: Include genes with detected expression in at least `3` cells.
+- `min.genes`: Include cells where at least `200` genes are detected.
 ```{r}
 ## Create seurat objects
 tenx <- CreateSeuratObject(raw.data = tenx.data, 
@@ -84,7 +96,9 @@ seqwell <- MergeSeurat(seqwell.dt, seqwell.nt,
 
 # Removing unnecessary objects.
 Full matrix takes lot of memory. Therefore it is highly recommended to remove the object that holds gene expression matrix. 
+
 ### Example:
+
 - Genes = 31,500
 - Cells = 730
 - Sparse matrix = 16Mb
@@ -100,7 +114,7 @@ rm(seqwell.nt)
 
 
 # Setting Identity class
-We want to identify cells by NT and DT samples. It is done using the function `SetAllIdent`. Before using the function we add NT and DT in `orig.ident` in the dataframe `seuratObject@meta.data`
+We want to identify cells by NT and DT samples. It is done using the function `SetAllIdent`. Before using the function we add NT and DT in `orig.ident` in the dataframe `seuratObject@meta.data`. 
 
 ```{r}
 ## Setting identity class for 10x
@@ -246,13 +260,16 @@ tenx.cc <- RunPCA(object = tenx.cc,
                   do.print = FALSE)
 cc2 <- PCAPlot(object = tenx.cc, do.return=T, plot.title = "10X")
 
-plot_grid(cc1,cc2, labels=c("Before cc-adjustement", "After cc-adjustemnt"), ncol = 2)  
+plot_grid(cc1,cc2, labels=c("Before cc-adjustement", "After cc-adjustemnt"), ncol = 2)
+
+## remove the object
+rm(tenx.cc)
 ```
 
 
 # Variable genes
 
-
+Seurat uses variable genes in the downstream data analysis. Here we calcualte variable genes individually for `tenx` and `seqwell`. Later we take union of variable genes od two datasets. 
 ```{r}
 ## Find variable genes
 tenx <- FindVariableGenes(object = tenx,
@@ -311,7 +328,7 @@ DimHeatmap(object = sObj,
            do.balanced = TRUE)
 
 sObj <- CalcVarExpRatio(object = sObj, reduction.type = "pca", grouping.var = "library",
-                       dims.use = 1:10)
+                       dims.use = 1:14)
 
 
 sObj.all.save <- sObj
@@ -344,11 +361,11 @@ VlnPlot(object = sObj.discard, features.plot = "GATA4", group.by = "library")
 # Alignment of CCA subspaces
 
 ```{r}
-## Now we align the CCA subspaces, which returns a new dimensional reduction called cca.aligned
+## Now we align the CCA subspaces
 sObj <- AlignSubspace(object = sObj,
                      reduction.type = "cca",
                      grouping.var = "library",
-                     dims.align = 1:10,
+                     dims.align = 1:14,
                      verbose = FALSE)
 
 ## Visualize the aligned CCA
@@ -432,11 +449,29 @@ p <- plot_ly(sObj@meta.data,
         hoverinfo="text") %>% add_markers()
 ```
 
+## Expression of gene of interest
+
+```{r}
+gene.of.interest <- c("SST","INS")
+FeaturePlot(object = sObj, 
+            features.plot = gene.of.interest, 
+            cols.use = c("red", "grey"), 
+            reduction.use = "tsne")
+```
+
+
+## Subsetting tSNE plot.
+
+```{r}
+sObj.sub <- SubsetData(sObj, ident.use = c(4,6))
+TSNEPlot(sObj.sub)
+```
 
 
 
 # Characterizing clusters
 
+Clusters can be characterized to specific cell type by looking into the expression of cell surface markers. [This link](https://www.bdbiosciences.com/documents/cd_marker_handbook.pdf) provides list of CD markers and thier expression based on cell types.
 
 ```{r}
 #FeaturePlot(sObj, features.plot = "CD8", cols.use = c("grey","red"))
@@ -447,28 +482,66 @@ p <- plot_ly(sObj@meta.data,
 
 Differential expression analysis can be done between two goups of clusters. The function `FindAllMarkers` calculates markers for each identity class (Cluster). It compares a cluster with all other cells. 
 
-## Parameter
-min.pct	: only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default is 0.1
-```{r}
+## Parameter (directly from Seurat's R documentation)
+`min.pct`	: only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default is 0.1
+`test.use` : Denotes which test to use. 
+`logfc.threshold` : Limit testing to genes which show, on average, at least X-fold difference (log-scale) between the two groups of cells. Default is 0.25 Increasing logfc.threshold speeds up the function, but can miss weaker signals.
+
+```{r message=FALSE, warning=FALSE}
 all.markers <- FindAllMarkers(sObj,
+                              logfc.threshold = 0.50,
                               test.use = "negbinom")
 head(all.markers, 4)
 ```
 
 Sometimes we want compare only two cluster of interest. In that case we we the function `FindMarkers`. If we want to do it for every cluster and save the markers into file we need to use `as.numeric(levels(sObj@ident))` in loop.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 cluster.6.vs.4.markers <- FindMarkers(object = sObj,
                                ident.1 = 6,
                                ident.2 = 4,
                                logfc.threshold = 0.25,
                                test.use = "negbinom")
+## visulizing markers
+  
+ ggplot(data=cluster.6.vs.4.markers, 
+        aes(x=avg_logFC, 
+            y=-log10(p_val_adj), 
+            colour=as.factor(cluster.6.vs.4.markers$p_val_adj <= 0.05)))+
+        geom_point(size=1) +
+        xlab("avg_logFC")+
+        ylab("-log10(adjusted pvalue)")+
+        theme_gray()+
+        guides(colour=FALSE)
 
 ```
 
+Visualizing top 20 markers based on `avg_logFC`.
+
+```{r}
+neg <-  cluster.6.vs.4.markers[order(cluster.6.vs.4.markers$avg_logFC),]
+pos <-  cluster.6.vs.4.markers[order(cluster.6.vs.4.markers$avg_logFC, decreasing=TRUE),]
+
+## merge neg top10.neg and top10.pos
+top20 <- rbind(
+  head(pos,10),
+  head(neg,10)
+)
+
+## user cluster 6 and 4 cells
+cells.use <- row.names(sObj@meta.data[sObj@meta.data$res.0.8 == 6 | sObj@meta.data$res.0.8 == 4, ])
+  
+DoHeatmap(object = sObj,
+          genes.use = row.names(top20), 
+          cells.use = cells.use,
+          slim.col.label = TRUE, remove.key = TRUE)
+```
+
+
+
 # Pathway analysis
 
-Significant cluater markers (p_val_adj <= 0.05) and their fold change can be fed into Reactome to find enriched pathways.
+Here we user Reactome for pathway analysis. Significant cluater markers (p_val_adj <= 0.05) and their fold change can be fed into Reactome to find enriched pathways.
 
 ```{r}
 #extract gene and log_FC
@@ -530,24 +603,24 @@ cat("LINK: ",paste("https://reactome.org/PathwayBrowser/#/DTAB=AN&ANALYSIS=", pt
 # Pseudotime
 
 ```{r}
-library("slingshot")
+#library("slingshot")
 
 ## get tSNE embedings
-cca.data <- FetchData(sObj, vars.all = c("tSNE_1","tSNE_2"))
+#cca.data <- FetchData(sObj, vars.all = c("tSNE_1","tSNE_2"))
 
 ## get cluster ids
-cnames <- colnames(sObj@meta.data)
+#cnames <- colnames(sObj@meta.data)
 
-clus <- sObj@meta.data[,grep("res",cnames)]
+#clus <- sObj@meta.data[,grep("res",cnames)]
 
 ## run slingshot
-sce <- slingshot(cca.data,clusterLabels=clus)
+#sce <- slingshot(cca.data,clusterLabels=clus)
 
 ## line
-lin1 <- getLineages(cca.data, clus, start.clus= '0', end.clus = max(clus))
+#lin1 <- getLineages(cca.data, clus, start.clus= '0', end.clus = max(clus))
 
-plot(cca.data, col = factor(clus), pch=16, asp = 1)
-lines(lin1, lwd = 3, show.constraints = TRUE)
+#plot(cca.data, col = factor(clus), pch=16, asp = 1)
+#lines(lin1, lwd = 3, show.constraints = TRUE)
 
 ```
 
