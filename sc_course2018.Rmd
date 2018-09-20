@@ -5,13 +5,6 @@ date: "September 5, 2018"
 output: pdf_document
 ---
 
-For final version:
-remove knit opts from setup
-change file locations
-Todo:
-H: Quality control with Scater
-H: Normalization & PCA with Seurat
-
 ### R Markdown
 
 This R Markdown document contains examples and exercises for Single cell RNA-Seq analysis course at CSC on 21.9.2018. The code is partially based on Scater and Seurat package vignettes.
@@ -36,7 +29,6 @@ biocLite()
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
-## Add cache.lazy = FALSE if getting errors
 library(SingleCellExperiment)
 library(scater)
 library(Seurat)
