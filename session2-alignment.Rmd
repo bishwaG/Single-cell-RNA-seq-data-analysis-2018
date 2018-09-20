@@ -309,9 +309,12 @@ sObj <- RunCCA(object = tenx,
 
 p1 <- DimPlot(object = sObj, reduction.use = "cca", group.by = "library", pt.size = 0.5, 
               do.return = TRUE)
-p2 <- VlnPlot(object = sObj, features.plot = "CC2", group.by = "library", do.return = TRUE)
+p2 <- VlnPlot(object = sObj, features.plot = "CC1", group.by = "library", do.return = TRUE)
 
-plot_grid(p1, p2)
+p3 <- VlnPlot(object = sObj, features.plot = "CC2", group.by = "library", do.return = TRUE)
+
+p1
+plot_grid(p2, p3)
 
 ## heat map of 18 CCA dimensions
 DimHeatmap(object = sObj, 
@@ -327,10 +330,16 @@ DimHeatmap(object = sObj,
            dim.use = 10:18, 
            do.balanced = TRUE)
 
+## Number of dimensions to include in the analysis
+dims.include <- 8
+
+## search for cells whose expression profile cannot be well-explained by low-dimensional CCA, 
+## compared to low-dimensional PCA.
 sObj <- CalcVarExpRatio(object = sObj, reduction.type = "pca", grouping.var = "library",
-                       dims.use = 1:14)
+                       dims.use = 1:dims.include)
 
-
+## discard cells where the variance explained by CCA is <2-fold (ratio <
+## 0.5) compared to PCA
 sObj.all.save <- sObj
 sObj <- SubsetData(object = sObj, subset.name = "var.ratio.pca", accept.low = 0.5)
 
@@ -342,17 +351,20 @@ sObj <- SubsetData(object = sObj, subset.name = "var.ratio.pca", accept.low = 0.
 
 ```{r}
 ## Discarded cells
-sObj.discard <- SubsetData(object = sObj.all.save, subset.name = "var.ratio.pca",
-                          accept.high = 0.5)
+sObj.discard <- SubsetData(object = sObj.all.save, 
+                           subset.name = "var.ratio.pca",
+                           accept.high = 0.5)
+## median gene count
 median(x = sObj@meta.data[, "nGene"])
 
-## median gene count of discarded cells
+## median gene count of discarded cells. Discarded cells have lower gene count
 median(x = sObj.discard@meta.data[, "nGene"])
 
-## print discarded cells
+## discarded cells
 discarded.cells <- colnames(sObj.discard@data)
 
-VlnPlot(object = sObj.discard, features.plot = "GATA4", group.by = "library")
+## expression of LYZ in discarded cells
+VlnPlot(object = sObj.discard, features.plot = "LYZ", group.by = "library")
 ```
 
 
@@ -365,7 +377,7 @@ VlnPlot(object = sObj.discard, features.plot = "GATA4", group.by = "library")
 sObj <- AlignSubspace(object = sObj,
                      reduction.type = "cca",
                      grouping.var = "library",
-                     dims.align = 1:14,
+                     dims.align = 1:dims.include,
                      verbose = FALSE)
 
 ## Visualize the aligned CCA
@@ -384,7 +396,7 @@ p1
 ## Run clustering
 sObj <- FindClusters(object = sObj, 
                      reduction.type = "cca.aligned", 
-                     dims.use = 1:10, 
+                     dims.use = 1:dims.include, 
                      save.SNN = TRUE,
                      print.output = FALSE,
                      force.recalc = TRUE)
@@ -398,7 +410,7 @@ sObj <- FindClusters(object = sObj,
 sObj <- RunTSNE(object = sObj, 
                 reduction.use = "cca.aligned",
                 dim.embed = 3,
-                dims.use = 1:10, 
+                dims.use = 1:dims.include, 
                 do.fast = TRUE)
 
 TSNEPlot(object = sObj, 
@@ -471,7 +483,7 @@ TSNEPlot(sObj.sub)
 
 # Characterizing clusters
 
-Clusters can be characterized to specific cell type by looking into the expression of cell surface markers. [This link](https://www.bdbiosciences.com/documents/cd_marker_handbook.pdf) provides list of CD markers and thier expression based on cell types.
+Clusters can be characterized to specific cell type by looking into the expression of cell surface markers. [This link](https://www.bdbiosciences.com/documents/cd_marker_handbook.pdf) provides list of CD markers and thier expression based on cell types. For automatic cell type characterization check https://sct.lifegen.com/.
 
 ```{r}
 #FeaturePlot(sObj, features.plot = "CD8", cols.use = c("grey","red"))
@@ -483,6 +495,7 @@ Clusters can be characterized to specific cell type by looking into the expressi
 Differential expression analysis can be done between two goups of clusters. The function `FindAllMarkers` calculates markers for each identity class (Cluster). It compares a cluster with all other cells. 
 
 ## Parameter (directly from Seurat's R documentation)
+
 - `min.pct`	: only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default is 0.1
 - `test.use` : Denotes which test to use. 
 - `logfc.threshold` : Limit testing to genes which show, on average, at least X-fold difference (log-scale) between the two groups of cells. Default is 0.25 Increasing logfc.threshold speeds up the function, but can miss weaker signals.
@@ -595,7 +608,9 @@ pthw.subset <- pthw[,cols]
 
 head(pthw.subset, 4)
 
-cat("LINK: ",paste("https://reactome.org/PathwayBrowser/#/DTAB=AN&ANALYSIS=", pthw.lst$summary$token,sep=""),"\n")
+cat("LINK: ",
+    paste("https://reactome.org/PathwayBrowser/#/DTAB=AN&ANALYSIS=", pthw.lst$summary$token,sep=""),
+    "\n")
 
 
 ```
