@@ -269,7 +269,7 @@ rm(tenx.cc)
 
 # Variable genes
 
-Seurat uses variable genes in the downstream data analysis. Here we calcualte variable genes individually for `tenx` and `seqwell`. Later we take union of variable genes od two datasets. 
+Seurat uses highly variable genes in the downstream data analysis. Here we calcualte variable genes seperately for `tenx` and `seqwell` and later we take union of variable genes od two datasets. 
 ```{r}
 ## Find variable genes
 tenx <- FindVariableGenes(object = tenx,
@@ -283,8 +283,8 @@ length(x = tenx@var.genes)
 length(x = seqwell@var.genes)
 
 ## Take highly variable genes
-hvg.tenx <- rownames(x = head(x = tenx@hvg.info , n = 500))
-hvg.seqwell <- rownames(x = head(x = seqwell@hvg.info, n = 500))
+hvg.tenx <- rownames(x = head(x = tenx@hvg.info , n = 400))
+hvg.seqwell <- rownames(x = head(x = seqwell@hvg.info, n = 400))
 hvg.union <- union(x = hvg.tenx, y = hvg.seqwell)
 ```
 
@@ -320,13 +320,13 @@ plot_grid(p2, p3)
 DimHeatmap(object = sObj, 
            reduction.type = "cca", 
            cells.use = 500, 
-           num.genes = 50,
+           num.genes = 30,
            dim.use = 1:6, 
            do.balanced = TRUE)
 DimHeatmap(object = sObj, 
            reduction.type = "cca", 
            cells.use = 500, 
-           num.genes = 50,
+           num.genes = 30,
            dim.use = 7:12, 
            do.balanced = TRUE)
 
@@ -459,7 +459,6 @@ p <- plot_ly(sObj@meta.data,
         color = ~res.0.8,  
         mode="markers", 
         hoverinfo="text") %>% add_markers()
-p
 ```
 
 ## Expression of gene of interest
