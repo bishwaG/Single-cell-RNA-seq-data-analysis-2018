@@ -1,0 +1,556 @@
+---
+title: "Seurat Alignment"
+output: pdf_document
+---
+
+This tutorial has been structured based on Seurat tutorial on alignment. We have two datasets from two different single cell plateforms (10X Genimics and Seqwell). Seurat's alignment pipeline allows us to integrate single-cell data across different conditions, technologies, and species.
+
+Load libraries needed for the analysis.
+```{r}
+## load libraries
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(ggplot2)
+library(plotly)
+```
+
+Setting up input output directories.
+
+```{r}
+## variables
+tenx.data.path <- "../data/10x/"
+seqwell.data.path <- "../data/seqwell/"
+robj.dir <- "r-objects"
+output.dir <- "output"
+
+
+## create directory
+dir.create(robj.dir)
+dir.create(output.dir)
+```
+
+Loading input gene expression matrix.
+```{r}
+## load 10X gene expression matrix
+tenx.data <- read.table(gzfile(file.path(tenx.data.path,"dge.csv.gz")), 
+                        sep="\t", 
+                        header=T, 
+                        row.names = 1)
+
+## load seqwell data
+dt <- file.path(seqwell.data.path,"dt-dge.csv.gz")
+nt <- file.path(seqwell.data.path,"nt-dge.csv.gz")
+
+seqwell.dt.data <- read.table(gzfile(dt), 
+                              sep="\t", 
+                              header=T, 
+                              row.names = 1)
+seqwell.nt.data <- read.table(gzfile(nt), 
+                              sep="\t", 
+                              header=T, 
+                              row.names = 1)
+
+dim(tenx.data)
+dim(seqwell.dt.data)
+dim(seqwell.nt.data)
+```
+
+# Create seurat objects.
+
+The function `CreateSeuratObject` creates Seurat object from full matrix. If you have sparse matrix from 10X Genomic plateform use the function `Read10X`. 
+
+### Parameters:
+- min.cells: Include genes with detected expression in at least `3` cells.
+- min.genes: Include cells where at least `200` genes are detected.
+```{r}
+## Create seurat objects
+tenx <- CreateSeuratObject(raw.data = tenx.data, 
+                           project="10X",
+                           min.cells = 3,
+                           min.genes = 200)
+
+seqwell.dt <- CreateSeuratObject(raw.data = seqwell.dt.data)
+seqwell.nt <- CreateSeuratObject(raw.data = seqwell.nt.data)
+
+## merge seqwell seurat objects
+seqwell <- MergeSeurat(seqwell.dt, seqwell.nt,
+                       project = "Seqwell", 
+                       add.cell.id1 = "DT", 
+                       add.cell.id2 = "NT",
+                       min.cells = 3,
+                       min.genes = 200)
+```
+
+# Removing unnecessary objects.
+Full matrix takes lot of memory. Therefore it is highly recommended to remove the object that holds gene expression matrix. 
+### Example:
+- Genes = 31,500
+- Cells = 730
+- Sparse matrix = 16Mb
+- Full matrix = 178 Mb
+
+```{r}
+## remove unnecessary objects
+rm(seqwell.dt.data)
+rm(seqwell.nt.data)
+rm(seqwell.dt)
+rm(seqwell.nt)
+```
+
+
+# Setting Identity class
+We want to identify cells by NT and DT samples. It is done using the function `SetAllIdent`. Before using the function we add NT and DT in `orig.ident` in the dataframe `seuratObject@meta.data`
+
+```{r}
+## Setting identity class for 10x
+tenx.ident <- gsub(".*\\.","", rownames(tenx@meta.data))
+tenx.ident[tenx.ident==1] <- "NT"
+tenx.ident[tenx.ident==2] <- "DT"
+
+tenx@meta.data$orig.ident <- factor(tenx.ident, levels = unique(tenx.ident))
+tenx <- SetAllIdent(object = tenx, id = "orig.ident")
+
+## Setting identity class for seqwell
+seqwell.ident <- gsub("_.*", "",rownames(seqwell@meta.data))
+seqwell@meta.data$orig.ident <- factor(seqwell.ident, levels = unique(seqwell.ident))
+seqwell <- SetAllIdent(object = seqwell, id = "orig.ident")
+```
+
+
+# Quality control
+
+In this step we remove celss having low and high `nUMI`. Cells having low `nUMI` could be of low quality and having high could be duplets. We also remove celss having high percentage of mitocondrial genes. Before removing cells we calculate percentage of mitocondrial cells and put the information in `percent.mito` column of `meta.data`.
+
+```{r}
+tenx.m.genes <- grep(pattern = "^MT-", x = rownames(x = tenx@data), value = TRUE)
+tenx.m.per <- Matrix::colSums(tenx@raw.data[tenx.m.genes, ]) / Matrix::colSums(tenx@raw.data)
+tenx <- AddMetaData(object = tenx, metadata = tenx.m.per, col.name = "percent.mito")
+
+seqwell.m.genes <- grep(pattern = "^MT-", x = rownames(x = seqwell@data), value = TRUE)
+seqwell.m.per <- Matrix::colSums(seqwell@raw.data[seqwell.m.genes, ]) / Matrix::colSums(seqwell@raw.data)
+seqwell <- AddMetaData(object = seqwell, metadata = seqwell.m.per, col.name = "percent.mito")
+```
+
+Now we check the distribution of `nGene`, `nUMI` and `percent.mito`.
+```{r}
+## Plots
+v1 <- VlnPlot(object = tenx, 
+              features.plot = c("nGene", "nUMI", "percent.mito"), 
+              nCol = 3, 
+              do.return = T)
+v2 <- VlnPlot(object = seqwell, 
+              features.plot = c("nGene", "nUMI", "percent.mito"), 
+              nCol = 3, 
+              do.return = T)
+plot_grid(v1,v2, labels=c("10X", "Seqwell"), ncol = 1)
+```
+
+## Scatter plots
+
+```{r}
+## Scatter plots
+sc1 <- ggplot(tenx@meta.data, aes(x=nUMI, y=percent.mito, colour=orig.ident, fill=orig.ident)) + 
+  geom_point(shape = 21, alpha = 0.5, size = 2)
+sc2 <- ggplot(tenx@meta.data, aes(x=nUMI, y=nGene, colour=orig.ident, fill=orig.ident)) + 
+  geom_point(shape = 21, alpha = 0.5, size = 2)
+
+## similar scatter plots plots for Seqwell
+sc3 <- ggplot(seqwell@meta.data, aes(x=nUMI, y=percent.mito, colour=orig.ident, fill=orig.ident)) + 
+  geom_point(shape = 21, alpha = 0.5, size = 2)
+sc4 <- ggplot(seqwell@meta.data, aes(x=nUMI, y=nGene, colour=orig.ident, fill=orig.ident)) + 
+  geom_point(shape = 21, alpha = 0.5, size = 2)
+
+plot_grid(sc1,sc2,sc3,sc4, ncol=2, nrow=2, labels=c("10X","10X","Seqwell","Seqwell") )
+```
+
+
+We filter cells using the function `FilterCells`. The parameters `low.thresholds` and `high.thresholds` are for setting up high and low cutoff for filtering. For example, in the following code cells having `nGene < 20` and `nGene > 2500` will be removed.
+```{r}
+
+## Filtering
+tenx <- FilterCells(object = tenx,
+                       subset.names = c("nGene", "percent.mito"),
+                       low.thresholds = c(200, -Inf),
+                       high.thresholds = c(5000, 0.08))
+seqwell <- FilterCells(object = seqwell,
+                    subset.names = c("nGene", "percent.mito"),
+                    low.thresholds = c(200, -Inf),
+                    high.thresholds = c(2500, 0.08))
+
+## Plots
+v3 <- VlnPlot(object = tenx, 
+              features.plot = c("nGene", "nUMI", "percent.mito"), 
+              nCol = 3, 
+              do.return = T)
+v4 <- VlnPlot(object = seqwell, 
+              features.plot = c("nGene", "nUMI", "percent.mito"), 
+              nCol = 3, 
+              do.return = T)
+plot_grid(v3,v4, labels=c("10X", "Seqwell"), ncol = 1)
+```
+
+
+# Normalization and scaling
+To make expression of each cells comparable with one another we have to normalize the expression. Seurat uses `LogNormalize` method to normalize gene expression for each cell by total expression. Then it is multiplied by scale factor before performing log transformation.
+
+The function `ScaleData` scales and centers genes and also regress out effects coming from user provided variables.
+```{r}
+## Normalization, data scaling and finding variable genes 
+tenx <- NormalizeData(object = tenx)
+tenx <- ScaleData(object = tenx, 
+                  vars.to.regress = c("nUMI", "percent.mito"),
+                  display.progress = TRUE)
+
+## No need to normalize because MergeSeurat() does it by default.
+seqwell <- ScaleData(object = seqwell, 
+                     vars.to.regress = c("nUMI", "percent.mito"),
+                     display.progress = TRUE)
+
+```
+
+
+# Cell cycle effect
+In some case we would like to remove effect coming from the expression of cell cycle genes. First we check if cells group based on cell cycle.  Seurat first gives score to each cell based on expression of G2/M and S phase. Cells expressing neither are likely not cycling and in G1 phase.
+
+```{r}
+## Cell-cycel effect for 10X data
+tenx.cc <- CellCycleScoring(object = tenx,
+                          s.genes = cc.genes$s.genes,
+                          g2m.genes = cc.genes$g2m.genes,
+                          set.ident = TRUE)
+## Check metadata data.frame. cell scores and phase are added
+head(tenx.cc@meta.data,4)
+
+
+## Before adjustment 
+tenx.cc <- RunPCA(object = tenx.cc, 
+                  pc.genes = c(cc.genes$s.genes, cc.genes$g2m.genes), 
+                  do.print = FALSE)
+cc1 <- PCAPlot(object = tenx.cc, do.return=T, plot.title = "10X")
+```
+
+
+Now we adjust the cell cycle by providing cell cucle score to regress out to the function `ScaleData`.
+
+```{r}
+## cell cycle correction
+tenx.cc <- ScaleData(object = tenx.cc, 
+                  vars.to.regress = c("S.Score", "G2M.Score"), 
+                  display.progress = TRUE)
+
+
+## Run pca using expression of cell cycle genes after adjustment
+tenx.cc <- RunPCA(object = tenx.cc, 
+                  pc.genes = c(cc.genes$s.genes, cc.genes$g2m.genes), 
+                  do.print = FALSE)
+cc2 <- PCAPlot(object = tenx.cc, do.return=T, plot.title = "10X")
+
+plot_grid(cc1,cc2, labels=c("Before cc-adjustement", "After cc-adjustemnt"), ncol = 2)  
+```
+
+
+# Variable genes
+
+
+```{r}
+## Find variable genes
+tenx <- FindVariableGenes(object = tenx,
+                          x.low.cutoff = 0.1,
+                          do.plot = TRUE)
+seqwell <- FindVariableGenes(object = seqwell, 
+                             x.low.cutoff = 0.2,
+                             do.plot = TRUE)
+
+length(x = tenx@var.genes)
+length(x = seqwell@var.genes)
+
+## Take highly variable genes
+hvg.tenx <- rownames(x = head(x = tenx@hvg.info , n = 500))
+hvg.seqwell <- rownames(x = head(x = seqwell@hvg.info, n = 500))
+hvg.union <- union(x = hvg.tenx, y = hvg.seqwell)
+```
+
+
+
+# Canonical correlation analysis (CCA)
+
+```{r}
+## Canonical correlation analysis to identify common sources of variation between the two datasets. 
+## RunCCA will also combine the two objects into a single object and stores the canonical correlation 
+## vectors (the vectors that project each dataset into the maximally correlated subspaces). 
+## We also store the original dataset identity as a column in object@meta.data
+
+## for identification after merging
+tenx@meta.data[, "library"] <- "10X"
+seqwell@meta.data[, "library"] <- "Seqwell"
+
+sObj <- RunCCA(object = tenx,
+              object2 = seqwell,
+              genes.use = hvg.union)
+
+
+p1 <- DimPlot(object = sObj, reduction.use = "cca", group.by = "library", pt.size = 0.5, 
+              do.return = TRUE)
+p2 <- VlnPlot(object = sObj, features.plot = "CC2", group.by = "library", do.return = TRUE)
+
+plot_grid(p1, p2)
+
+## heat map of 18 CCA dimensions
+DimHeatmap(object = sObj, 
+           reduction.type = "cca", 
+           cells.use = 500, 
+           num.genes = 50,
+           dim.use = 1:9, 
+           do.balanced = TRUE)
+DimHeatmap(object = sObj, 
+           reduction.type = "cca", 
+           cells.use = 500, 
+           num.genes = 50,
+           dim.use = 10:18, 
+           do.balanced = TRUE)
+
+sObj <- CalcVarExpRatio(object = sObj, reduction.type = "pca", grouping.var = "library",
+                       dims.use = 1:10)
+
+
+sObj.all.save <- sObj
+sObj <- SubsetData(object = sObj, subset.name = "var.ratio.pca", accept.low = 0.5)
+
+
+```
+
+
+## Discarded cells
+
+```{r}
+## Discarded cells
+sObj.discard <- SubsetData(object = sObj.all.save, subset.name = "var.ratio.pca",
+                          accept.high = 0.5)
+median(x = sObj@meta.data[, "nGene"])
+
+## median gene count of discarded cells
+median(x = sObj.discard@meta.data[, "nGene"])
+
+## print discarded cells
+discarded.cells <- colnames(sObj.discard@data)
+
+VlnPlot(object = sObj.discard, features.plot = "GATA4", group.by = "library")
+```
+
+
+
+
+# Alignment of CCA subspaces
+
+```{r}
+## Now we align the CCA subspaces, which returns a new dimensional reduction called cca.aligned
+sObj <- AlignSubspace(object = sObj,
+                     reduction.type = "cca",
+                     grouping.var = "library",
+                     dims.align = 1:10,
+                     verbose = FALSE)
+
+## Visualize the aligned CCA
+p1 <- VlnPlot(object = sObj, features.plot = "GATA4",
+              group.by = "library",
+              do.return = TRUE)
+p1
+
+
+```
+
+
+# Clustering
+
+```{r}
+## Run clustering
+sObj <- FindClusters(object = sObj, 
+                     reduction.type = "cca.aligned", 
+                     dims.use = 1:10, 
+                     save.SNN = TRUE,
+                     print.output = FALSE,
+                     force.recalc = TRUE)
+```
+
+
+# Visualizing cluster using tSNE
+
+```{r}
+## Run tSNE
+sObj <- RunTSNE(object = sObj, 
+                reduction.use = "cca.aligned",
+                dim.embed = 3,
+                dims.use = 1:10, 
+                do.fast = TRUE)
+
+TSNEPlot(object = sObj, 
+               do.return = TRUE, 
+               pt.size = 0.5,
+               do.label = TRUE)
+
+```
+
+# Save Seurat object to file
+
+```{r}
+## Save object
+save(sObj, file=file.path(robj.dir,"sObj.RData"))
+
+```
+
+
+## 3D tSNE plot
+```{r}
+## extract three dimensions of tSNE
+tsne.dims <- FetchData(sObj, vars.all = c("tSNE_1","tSNE_2","tSNE_3"))
+
+sObj@meta.data$tSNE_1 <- tsne.dims$tSNE_1
+sObj@meta.data$tSNE_2 <- tsne.dims$tSNE_2
+sObj@meta.data$tSNE_3 <- tsne.dims$tSNE_3
+
+
+## coloring tSNE using nUMI, nGene, percent.mito etc
+ggplot(sObj@meta.data, aes(x=tSNE_1, y=tSNE_2, colour=nUMI))+geom_point()
+ggplot(sObj@meta.data, aes(x=tSNE_1, y=tSNE_2, colour=nGene))+geom_point()
+ggplot(sObj@meta.data, aes(x=tSNE_1, y=tSNE_2, colour=percent.mito))+geom_point()
+ggplot(sObj@meta.data, aes(x=tSNE_1, y=tSNE_2, colour=orig.ident))+geom_point()
+ggplot(sObj@meta.data, aes(x=tSNE_1, y=tSNE_2, colour=library))+geom_point()
+
+
+## 3D tSNE plot
+Sys.setenv("plotly_username"="singleCell") 
+Sys.setenv("plotly_api_key"="20VlK6d6Iik9srBaUw3a")
+
+## 3D tSNE plot
+p <- plot_ly(sObj@meta.data, 
+        x = ~tSNE_1, 
+        y = ~tSNE_2, 
+        z = ~tSNE_3, 
+        color = ~res.0.8,  
+        mode="markers", 
+        hoverinfo="text") %>% add_markers()
+```
+
+
+
+
+# Characterizing clusters
+
+
+```{r}
+#FeaturePlot(sObj, features.plot = "CD8", cols.use = c("grey","red"))
+```
+
+
+# DE analysis
+
+Differential expression analysis can be done between two goups of clusters. The function `FindAllMarkers` calculates markers for each identity class (Cluster). It compares a cluster with all other cells. 
+
+## Parameter
+min.pct	: only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default is 0.1
+```{r}
+all.markers <- FindAllMarkers(sObj,
+                              test.use = "negbinom")
+head(all.markers, 4)
+```
+
+Sometimes we want compare only two cluster of interest. In that case we we the function `FindMarkers`. If we want to do it for every cluster and save the markers into file we need to use `as.numeric(levels(sObj@ident))` in loop.
+
+```{r}
+cluster.6.vs.4.markers <- FindMarkers(object = sObj,
+                               ident.1 = 6,
+                               ident.2 = 4,
+                               logfc.threshold = 0.25,
+                               test.use = "negbinom")
+
+```
+
+# Pathway analysis
+
+Significant cluater markers (p_val_adj <= 0.05) and their fold change can be fed into Reactome to find enriched pathways.
+
+```{r}
+#extract gene and log_FC
+
+sig.markers <- cluster.6.vs.4.markers[cluster.6.vs.4.markers$p_val_adj<=0.05,]
+sig.markers$avg_FC <- 2^sig.markers$avg_logFC
+sig.markers$genes <- rownames(sig.markers)
+sig.markers <- sig.markers[,c("genes","avg_logFC")]
+
+out.file <- "sig.markers.csv"
+
+write.table(sig.markers,file=file.path(output.dir,out.file), 
+            sep="\t", 
+            row.names = F, 
+            col.names = F,
+            quote=F)
+
+```
+
+
+```{r}
+library(jsonlite)
+## Reactome url
+url <- "https://reactome.org/AnalysisService/identifiers/projection/?pageSize=1&page=1"
+
+## POST to reactome
+cmd <- paste("curl -H \"Content-Type: text/plain\" --data-binary @",file.path(output.dir,out.file)," -X POST --url ",url,sep="")
+a <- system(cmd,
+            show.output.on.console = T,
+            intern = T)
+
+## convert json to list
+pthw.lst <- fromJSON(a,flatten=T)
+pthw <- pthw.lst$pathways
+
+## Informative columns
+cols <- c("stId",
+          "name",
+          "species.name",
+          "entities.total",
+          "entities.found",
+          "entities.ratio",
+          "entities.pValue",
+          "entities.fdr",
+          "reactions.total",
+          "reactions.found",
+          "reactions.ratio")
+
+pthw.subset <- pthw[,cols]
+
+
+head(pthw.subset, 4)
+
+cat("LINK: ",paste("https://reactome.org/PathwayBrowser/#/DTAB=AN&ANALYSIS=", pthw.lst$summary$token,sep=""),"\n")
+
+
+```
+
+# Pseudotime
+
+```{r}
+library("slingshot")
+
+## get tSNE embedings
+cca.data <- FetchData(sObj, vars.all = c("tSNE_1","tSNE_2"))
+
+## get cluster ids
+cnames <- colnames(sObj@meta.data)
+
+clus <- sObj@meta.data[,grep("res",cnames)]
+
+## run slingshot
+sce <- slingshot(cca.data,clusterLabels=clus)
+
+## line
+lin1 <- getLineages(cca.data, clus, start.clus= '0', end.clus = max(clus))
+
+plot(cca.data, col = factor(clus), pch=16, asp = 1)
+lines(lin1, lwd = 3, show.constraints = TRUE)
+
+```
+
+
+
+
