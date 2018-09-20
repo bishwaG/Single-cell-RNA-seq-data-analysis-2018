@@ -483,9 +483,9 @@ Clusters can be characterized to specific cell type by looking into the expressi
 Differential expression analysis can be done between two goups of clusters. The function `FindAllMarkers` calculates markers for each identity class (Cluster). It compares a cluster with all other cells. 
 
 ## Parameter (directly from Seurat's R documentation)
-`min.pct`	: only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default is 0.1
-`test.use` : Denotes which test to use. 
-`logfc.threshold` : Limit testing to genes which show, on average, at least X-fold difference (log-scale) between the two groups of cells. Default is 0.25 Increasing logfc.threshold speeds up the function, but can miss weaker signals.
+- `min.pct`	: only test genes that are detected in a minimum fraction of min.pct cells in either of the two populations. Meant to speed up the function by not testing genes that are very infrequently expressed. Default is 0.1
+- `test.use` : Denotes which test to use. 
+- `logfc.threshold` : Limit testing to genes which show, on average, at least X-fold difference (log-scale) between the two groups of cells. Default is 0.25 Increasing logfc.threshold speeds up the function, but can miss weaker signals.
 
 ```{r message=FALSE, warning=FALSE}
 all.markers <- FindAllMarkers(sObj,
