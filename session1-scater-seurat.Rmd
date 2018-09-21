@@ -44,6 +44,7 @@ library(dplyr)
 library(ggplot2)
 set.seed(1234567)
 a9_path <- "/wrk/hpessa/DONOTREMOVE/sc_course/10X/A9/GRCh38/"
+a9_path <- "./data1/10x/A9/"
 ```
 
 The datasets used here are from last year's course. They are human iPSCs induced towards pancreatic islet fate (A9: control, B9: treated). Timo Otonkoski group has kindly given us the permission to use them as examples, but please do not copy the data and take it with you.
