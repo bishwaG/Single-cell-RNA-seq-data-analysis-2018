@@ -1,0 +1,266 @@
+---
+title: "Single cell course 2018"
+author: "Heli Pessa"
+date: "September 5, 2018"
+output: pdf_document
+---
+
+### R Markdown
+
+This R Markdown document contains examples and exercises for Single cell RNA-Seq analysis course at CSC on 21.9.2018. The code is partially based on Scater and Seurat package vignettes.
+
+R Markdown is best opened in RStudio so that the code can be run and the results viewed within the document.
+
+To run a line of code at the cursor, type Ctrl+Enter. To run a whole chunk, click on the green arrow in the upper right corner of the chunk.
+You can type the code for the exercises directly into the R console or in this document, which you can save.
+To insert a new code chunk for your code, type Ctrl+Alt+i.
+
+### Bioconductor
+
+[Bioconductor](http://bioconductor.org/) is a collection of R packages for the analysis of biological data. Bioconductor packages are installed and updated using biocLite():
+
+```{r eval=FALSE}
+## try http:// if https:// URLs are not supported
+source("https://bioconductor.org/biocLite.R")
+biocLite()
+```
+
+### QC with Scater
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+library(SingleCellExperiment)
+library(scater)
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+set.seed(1234567)
+a9_path <- "/wrk/hpessa/DONOTREMOVE/sc_course/10X/A9/GRCh38/"
+```
+
+The datasets used here are from last year's course. They are human iPSCs induced towards pancreatic islet fate (A9: control, B9: treated). Timo Otonkoski group has kindly given us the permission to use them as examples, but please do not copy the data and take it with you.
+
+We start by reading in the data. 10X count data is in MatrixMarket format and can be read into R using readMM() from Matrix package. Then we create the SingleCellExperiment object that scater functions work on.
+
+```{r}
+cellbarcodes_A9 <- read.table(paste(a9_path, "barcodes.tsv", sep = ""))
+genenames_A9 <- read.table(paste(a9_path, "genes.tsv", sep = ""))
+counts_A9 <- Matrix::readMM(paste(a9_path, "matrix.mtx", sep = ""))
+
+rownames(counts_A9) <- genenames_A9[,1]
+colnames(counts_A9) <- cellbarcodes_A9[,1]
+A9sce <- SingleCellExperiment(assays = list(counts = as.matrix(counts_A9)))
+A9sce
+```
+
+Remove genes that are not expressed in any cell:
+
+```{r}
+keep_feature <- rowSums(counts(A9sce) > 0) > 0
+A9sce <- A9sce[keep_feature,]
+```
+
+High proportion of mitochondrial transcripts is often a sign of a broken cell. We define a handful of commonly expressed mitochondrial genes as feature controls, which will later be used for QC.
+
+```{r}
+mito.ids <- c("ENSG00000198899", "ENSG00000198727", "ENSG00000198888",
+    "ENSG00000198886", "ENSG00000212907", "ENSG00000198786",
+    "ENSG00000198695", "ENSG00000198712", "ENSG00000198804",
+    "ENSG00000198763", "ENSG00000228253", "ENSG00000198938",
+    "ENSG00000198840")
+isSpike(A9sce, "MT") <- rownames(A9sce) %in% mito.ids
+
+A9sce <- calculateQCMetrics(A9sce, feature_controls = list(MT = isSpike(A9sce, "MT")))
+A9sce
+```
+
+As you see above, calculateQCMetrics() has produced many useful calculations from the data and stored them in the SCE object. 
+
+```{r}
+names(colData(A9sce))
+```
+
+```{r}
+plotColData(A9sce, x = "total_features", y = "total_counts")
+```
+
+Genes with highest expression:
+
+```{r}
+plotQC(A9sce, type = "highest-expression")
+```
+
+```{r}
+plotQC(A9sce, type = "exprs-freq-vs-mean")
+```
+
+Exercise: explore some more colData slots using plotColData().
+
+### Cell QC
+
+Barcodes with very low amounts of RNA may have arisen from beads that did not capture a cell but RNA from the sample buffer. On the other hand, outliers at the upper end of the total counts distribution can be from a clump of cells captured by one barcode bead. In addition, some cells contain a high percentage of mitochondrial transcripts:
+
+```{r}
+plotColData(A9sce, x = "total_features", y = "pct_counts_MT")
+```
+
+As you can see from the plots, this data is already filtered to remove cells with lowest number of counts and features. Here, we will filter the data retaining only cells that have at least 5000 total counts and at least 500 expressed features:
+
+```{r}
+keep.total <- A9sce$total_counts > 5000
+keep.n <- A9sce$total_features_by_counts > 500
+keep.mt <- A9sce$pct_counts_MT < 10
+A9_filtered <- A9sce[,keep.total & keep.n & keep.mt]
+```
+
+How many cells were filtered? Do you think the thresholds are sensible? Did the top expressed genes change?
+
+### Gene QC
+
+We retain genes only if they are expressed in at least four cells:
+
+```{r}
+keep_feature <- nexprs(A9_filtered, byrow = TRUE) >= 4
+A9_filtered <- A9_filtered[keep_feature,]
+```
+
+How many genes were filtered?
+
+```{r}
+plotQC(A9_filtered, type = "exprs-freq-vs-mean")
+```
+
+Examine the filtered dataset. Do you see differences compared to the unfiltered data?
+
+Extra exercise, if there is time: perform QC to the Seq-Well dataset. It is a tsv-separated text file and can be read in using read.table().
+Tip: you may have to change the filtering thresholds.
+
+
+### Filtering and normalization with Seurat
+
+We could use the already filtered count matrix from the SingleCellExperiment object as raw data for Seurat. Here we will anyway start from the original data and perform filtering again using Seurat's own functionality.
+We keep cells with at least 500 transcripts and genes that are expressedd in at least 4 cells.
+
+```{r}
+a9.mat <- Read10X(a9_path)
+
+min.genes <- 200
+min.cells <- 4
+
+a9 <- CreateSeuratObject(raw.data = a9.mat, min.cells = min.cells, min.genes = min.genes, 
+    project = "A9")
+```
+
+We calculate percentage of mitochondrial transcripts per cell and store it in the metadata slot of the Seurat object:
+
+```{r}
+mito.genes = grep("^MT-", rownames(a9@data), value = TRUE)
+percent.mito = Matrix::colSums(a9@raw.data[mito.genes,]) / Matrix::colSums(a9@raw.data)
+a9 <- AddMetaData(a9, metadata = percent.mito, col.name = "percent.mito")
+VlnPlot(a9, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+```
+
+Metadata can also be used in filtering:
+
+```{r}
+a9 <- FilterCells(a9, subset.names = c("nGene", "percent.mito"), 
+    low.thresholds = c(500, -Inf), high.thresholds = c(Inf, 0.1))
+```
+
+The number of transcripts captured per cell varies widely, so normalization is required to make the cells comparable. Seurat implements several normalization methods. We will use LogNormalize, which normalizes the gene expression measurements for each cell by total counts, multiplies this by a scale factor, and log-transforms the result.
+
+```{r}
+a9 <- NormalizeData(a9, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+### Removing unwanted sources of variation
+
+Your data may contain uninteresting variation, such as batch effects or cell cycle-induced variation. They can be regressed out by Seurat using linear models to predict gene expression based on user-defined variables. Here we will just remove the variation caused by different number of detected molecules per cell as well as the percentage of mitochondrial transcripts.
+
+```{r}
+a9 <- ScaleData(a9, vars.to.regress = c("nUMI", "percent.mito"))
+```
+
+### Choosing variable genes
+
+Most genes in the data are expressed at very low levels or do not show significant variation above noise. For downstream analyses, we need to identify highly variable genes.
+
+```{r}
+a9 <- FindVariableGenes(a9, mean.function = ExpMean, dispersion.function = LogVMR, 
+    x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
+```
+
+How is the relationship between expression level and variation? Do you see interesting genes?
+
+```{r}
+length(a9@var.genes)
+```
+
+### PCA
+
+We examine the variation in the data using principal component analysis (PCA).
+
+```{r}
+a9 <- RunPCA(a9, pc.genes = a9@var.genes, do.print = TRUE, pcs.print = 1:5, 
+    genes.print = 5)
+```
+
+```{r}
+PrintPCA(a9, pcs.print = 1:4, genes.print = 5, use.full = FALSE)
+```
+
+```{r}
+PCAPlot(object = a9, dim.1 = 1, dim.2 = 2)
+```
+
+```{r}
+PCHeatmap(a9, pc.use = 1:9, cells.use = 500, do.balanced = TRUE, 
+    label.columns = FALSE, use.full = FALSE)
+```
+
+```{r}
+PCElbowPlot(a9)
+```
+
+Plot the most promising-looking PCs with PCAPlot(). Which ones seem to represent the overall variation best? Are there others that separate a distinct cluster of cells?
+
+Several marker genes should be upregulated in differentiating cells at least in the treated sample, possibly even in the control.
+
+```{r}
+FeaturePlot(a9, features.plot = c("INS", "SOX9", "CDK1", "AFP"), cols.use = c("grey", "red3"), 
+    reduction.use = "pca", pt.size = 2)
+```
+
+Repeat the above using the treated sample B9. Compare the genes driving the first PCs between the two samples.
+
+
+### Clustering cells
+
+Choosing PCs is critical for clustering. Use the methods above to examine the PCs to find the ones with most biologically relevant variation and decide which ones to use.
+
+```{r}
+a9 <- FindClusters(a9, reduction.type = "pca", dims.use = 1:9, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE)
+a9 <- RunTSNE(a9, dims.use = 1:9, do.fast = TRUE)
+```
+
+T-SNE is a great way to visualize clustering results but it can also mislead. [This paper](https://distill.pub/2016/misread-tsne/) presents some of the difficulties in interpreting t-SNE plots.
+
+```{r}
+TSNEPlot(a9)
+```
+
+Genes enriched in specific clusters can be used as cluster biomarkers.
+
+```{r}
+a9.markers = FindAllMarkers(a9, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+a9.markers %>% group_by(cluster) %>% top_n(4, avg_logFC)
+```
+
+Exercise: perform the above steps on the treated sample B9.
+Are the resulting clusters similar or different?
+
+
+```{r}
+sessionInfo()
+```
