@@ -8,10 +8,11 @@ This tutorial has been structured based on Seurat tutorial on alignment. We have
 
 As a first step open terminal from your application menu and change the directory to `Single-cell-course-2018`
 
-```{bash include=FALSE}
+```
 cd single-cell-course-2018
 git clone https://github.com/bishwaG/Single-cell-RNA-seq-data-analysis-2018.git
-cd Single-cell-RNA-seq-data-analysis-2018
+mv Single-cell-RNA-seq-data-analysis-2018 analysis
+cd analysis
 ```
 
 
@@ -31,8 +32,8 @@ Setting up input output directories.
 
 ```{r message=FALSE}
 ## variables
-tenx.data.path <- "data/10x/"
-seqwell.data.path <- "data/seqwell/"
+tenx.data.path <- "../data/10x/"
+seqwell.data.path <- "../data/seqwell/"
 robj.dir <- "r-objects"
 output.dir <- "output"
 
@@ -618,24 +619,23 @@ cat("LINK: ",
 # Pseudotime
 
 ```{r}
-#library("slingshot")
-
+library("slingshot")
 ## get tSNE embedings
-#cca.data <- FetchData(sObj, vars.all = c("tSNE_1","tSNE_2"))
+cca.data <- FetchData(sObj, vars.all = c("tSNE_1","tSNE_2"))
 
 ## get cluster ids
-#cnames <- colnames(sObj@meta.data)
+cnames <- colnames(sObj@meta.data)
 
-#clus <- sObj@meta.data[,grep("res",cnames)]
+clus <- sObj@meta.data[,grep("res",cnames)]
 
 ## run slingshot
-#sce <- slingshot(cca.data,clusterLabels=clus)
+sce <- slingshot(cca.data,clusterLabels=clus)
 
 ## line
-#lin1 <- getLineages(cca.data, clus, start.clus= '0', end.clus = max(clus))
+lin1 <- getLineages(cca.data, clus, start.clus= '0', end.clus = max(clus))
 
-#plot(cca.data, col = factor(clus), pch=16, asp = 1)
-#lines(lin1, lwd = 3, show.constraints = TRUE)
+plot(cca.data, col = factor(clus), pch=16, asp = 1)
+lines(lin1, lwd = 3, show.constraints = TRUE)
 
 ```
 
