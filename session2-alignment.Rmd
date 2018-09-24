@@ -250,7 +250,9 @@ Now we adjust the cell cycle by providing cell cucle score to regress out to the
 
 ```{r}
 ## cell cycle correction
-tenx.cc <- ScaleData(object = tenx.cc, 
+tenx.cc <- ScaleData(object = tenx.cc,
+                  ## If provided data.use this function uses already scaled data.
+                  data.use = tenx@scale.data,
                   vars.to.regress = c("S.Score", "G2M.Score"), 
                   display.progress = TRUE)
 
@@ -640,5 +642,9 @@ lines(lin1, lwd = 3, show.constraints = TRUE)
 ```
 
 
+## SessionInfo
+```{r}
+sessionInfo()
+```
 
 
